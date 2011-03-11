@@ -1,0 +1,74 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use Digest::MD5 qw(md5_hex);
+
+
+# we don't want to create hashes for files larger than this.
+# it takes a long time to generate MD5 sums of large files,
+# so unless you need to check for duplicates on large files,
+# 5M is a pretty good maximum.
+my $MAXSIZE = 1024 * 1024 * 5;
+
+main();
+
+sub main {
+    # use a unique delimeter for the size hash
+    my $delimeter = chr(1);
+    # which directory are we going to find dupes in? cwd if none provided
+    my $dir       = $ARGV[0] || '.';
+    # a counter for the number of duplicates found
+    my $dupecount = 0;
+    # a hash containing delimited lists of files of the same file size
+    # this should improve the lookup of same size files dramatically
+    # key is filesize
+    my %sizehash  = ();
+    # hash of md5 hashes... get it, a hash of hashes...
+    # key is filename
+    my %hashhash  = ();
+    # directory to move duplicates to, for saving, or confirming duplicity
+    my $dupedir   = "$dir/.dupes";
+
+    opendir DIR, $dir or die "could not open \'$dir\': $!\n";
+    foreach my $file (grep { !/^\.\.?$/ } readdir DIR) {
+        my $dupe = 0;
+        next unless (-f "$dir/$file");
+        my $size = (stat("$dir/$file"))[7];
+        next if ($size > $MAXSIZE);
+        my @sizearray = ();
+        @sizearray = split(/$delimeter/,$sizehash{$size}) if ($sizehash{$size});
+        foreach my $samesizefile (@sizearray) {
+            $hashhash{$file} = sumfile("$dir/$file")
+                unless ($hashhash{$file});
+            $hashhash{$samesizefile} = sumfile("$dir/$samesizefile")
+                unless ($hashhash{$samesizefile});
+            if ($hashhash{$file} eq $hashhash{$samesizefile}) {
+                $dupecount++;
+                mkdir $dupedir unless (-d $dupedir);
+                rename "$dir/$file","$dupedir/$file:$samesizefile" or
+                    die "failed to remove dupe ($file,$samesizefile): $!\n";
+                print "$file duplicate of $samesizefile\n";
+                $dupe = 1;
+                last;
+            }
+        }
+        push(@sizearray,$file) unless ($dupe);
+        $sizehash{$size} = join($delimeter,@sizearray);
+    }
+    closedir DIR;
+    print "$dupecount duplicate files found\n";
+}
+
+
+sub sumfile {
+    my $file = shift;
+
+    open FILE,$file or die "could not open \'$file\': $!\n";
+    binmode FILE or die "binmod \'$file\' failed: $!\n";
+    my $md5 = md5_hex(<FILE>);
+    close FILE;
+
+    return $md5;
+}
