@@ -4,6 +4,7 @@ USER='cpbills'
 #REPO="http://github.com/${USER}/dot-files.git"
 REPO="/home/${USER}/projects/repos/dot-files"
 TEMP="/tmp/${USER}-dot-files.$$"
+ORIGIN="local" # github / bitbucket / local / origin ... your choice
 
 if [ -d "$HOME/.git" ]; then
     echo "Home directory already checked out?" >&2
@@ -11,7 +12,7 @@ if [ -d "$HOME/.git" ]; then
     exit 1
 fi
 
-/usr/bin/git clone $REPO $TEMP > /dev/null
+/usr/bin/git clone -o $ORIGIN $REPO $TEMP > /dev/null
 mv $TEMP/.git $HOME/
 
 # change to $HOME since git commands don't accept directory args
