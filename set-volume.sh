@@ -7,7 +7,7 @@ OSD=/home/cpbills/bin/osd-text.sh
 STEP=5
 USE_OSD=1
 VERBOSE=0
-DO_MPD=1
+DO_MPD=0
 OUTPUT=
 
 STATUS=`$AMIXER cget name="$CHANNEL" | tail -n2`
@@ -18,12 +18,12 @@ case $1 in
         $AMIXER -q set Master toggle
         IS_IT_ON=`$AMIXER cget name="$TOGGLE" | tail -n1 | cut -d= -f2`
         if [ "$IS_IT_ON" = 'on' ]; then
-            OUTPUT="ROCK OUT MAN!"
+            OUTPUT="UN MUTE"
             if [ $DO_MPD -gt 0 ]; then
                 mpc -q play
             fi
         else
-            OUTPUT="Woah, woah woah... I need some quiet time."
+            OUTPUT="MUTE"
             if [ $DO_MPD -gt 0 ]; then
                 mpc -q pause
             fi
@@ -56,8 +56,6 @@ if [[ $OLD_VOLUME -eq $VOLUME ]] && [[ $1 != 'mute' ]]; then
     fi
     exit
 fi
-
-echo "$OLD_VOLUME $VOLUME $1"
 
 PERCENT=`echo "(($VOLUME-$MIN)*100)/($MAX-$MIN)" | bc -l`
 PERCENT=`printf "%02.0f\n" "$PERCENT"`
