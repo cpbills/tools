@@ -1,0 +1,39 @@
+#!/bin/bash
+
+backup_dir=/mnt/vault/projects
+config=$HOME/.config/backup-git.conf
+git=/usr/bin/git
+tmp_dir=/tmp
+
+while read name directory; do
+  cd "$directory"
+  $git fetch --all --prune > /dev/null
+  if [[ $? -ne 0 ]]; then
+    echo "$name: git fetch had 'issues'" >&2
+    continue
+  fi
+  $git pull > /dev/null
+  if [[ $? -ne 0 ]]; then
+    echo "$name: git pull had 'issues'" >&2
+    continue
+  fi
+  $git bundle create $tmp_dir/$name.git.$$ --all &> /dev/null
+  if [[ $? -ne 0 ]]; then
+    echo "$name: git bundle create had 'issues'" >&2
+    continue
+  fi
+  if [[ $? -eq 0 ]]; then
+    # Bundle was successful, move it to backup directory
+    # Moving across filesystems is not atomic, so do this in two steps.
+    mv "$tmp_dir/$name.git.$$" "$backup_dir/"
+    if [[ $? -eq 0 ]]; then
+      # Moved fine, now rename
+      mv -f "$backup_dir/$name.git.$$" "$backup_dir/$name.git"
+      echo "$name: backed up successfully"
+    fi
+  else
+    # Bundle failed, clean up any detritus
+    rm -rf "$tmp_dir/$name.git.$$"
+    echo "Failed to create bundle for $directory" >&2
+  fi
+done < "$config"
