@@ -1,0 +1,6 @@
+#!/bin/sh
+
+CONF_DIR="$HOME/.config/getmail"
+find $CONF_DIR -maxdepth 1 -type f -name '*.conf' | while read config; do
+  /usr/bin/getmail -g $CONF_DIR -r $config &>/dev/null
+done
