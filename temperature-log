@@ -1,0 +1,10 @@
+#!/bin/sh
+
+temp=$(sed -e 's/000$//' /sys/devices/virtual/hwmon/hwmon0/temp1_input)
+fan_level=$(grep ^level /proc/acpi/ibm/fan | grep -oe '[0-9]*')
+time_stamp=$(date +"%F %T")
+log=/home/cpbills/files/temperature.log
+
+tail -n999 $log > /tmp/templog.$$
+mv /tmp/templog.$$ $log
+echo "$time_stamp temperature: $temp fan level: $fan_level" >> $log
