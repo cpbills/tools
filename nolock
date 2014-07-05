@@ -1,0 +1,2 @@
+#!/bin/bash
+/usr/bin/xscreensaver-command -deactivate &>/dev/null
