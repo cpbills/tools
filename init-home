@@ -1,0 +1,38 @@
+#!/bin/bash
+
+repo=$1
+git=/usr/bin/git
+dest=$HOME
+
+if [[ ! -x "$git" ]]; then
+  echo "Git not installed or not located at $git" >&2
+  exit 1
+fi
+
+if [[ -z "$repo" ]]; then
+  echo "Please provide a repository to clone." >&2
+  exit 2
+fi
+
+if [[ -e "$dest/.git" ]]; then
+  echo "$dest already appears to be under git control, aborting." >&2
+  exit 3
+fi
+
+$git clone -o installer "$repo" /tmp/dot-files.$$
+mv /tmp/dot-files.$$/.git "$dest/.git"
+rm -rf /tmp/dot-files.$$
+cd "$dest"
+$git stash
+
+cat >&2 <<ENDL
+dot-files have been checked out in $HOME
+If files have been replaced, you can view the changes with:
+
+  git stash show -p | grep ^+ | grep -v /dev/null
+
+If there is nothing you need to save, you can safely drop the stash:
+
+  git stash drop
+
+ENDL
