@@ -1,0 +1,8 @@
+# salt must be 8+ characters
+salt='somesalt'
+# appended to passwords to make sure all character classes are covered
+hit_all_reqs='0Qy6@'
+# password length
+length='16'
+# sha-256 hash is 43 chars, so 0-(43-length of password) are your limits
+hash_start='12'

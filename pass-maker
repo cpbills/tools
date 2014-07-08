@@ -1,0 +1,42 @@
+#!/bin/bash
+
+config=$1
+# The following are set by sourcing the config file
+# For scoping reasons, they are declared here
+salt=''
+hit_all_reqs=''
+length=''
+hash_start=''
+
+if [[ -z "$config" || ! -e "$config" ]]; then
+  # Fallback configuration file, if none provided or
+  # the provided config file does not exist.
+  config="$HOME/.config/pass-maker.conf"
+fi
+
+
+if [[ -e "$config" ]]; then
+  source "$config"
+else
+  echo "Missing configuration: $config" >&2
+  exit 1
+fi
+
+hash_end=$((hash_start + (length - 1 - ${#hit_all_reqs})))
+
+read -p "site: " site
+stty -echo
+read -p "pass: " pass
+stty echo
+echo
+
+pass_id=$(printf "%s%s" "$pass" "$site" | md5sum | cut -c1-8)
+pass_hash=$(
+  printf "%s%s" "$pass" "$site" \
+  | mkpasswd -m sha-256 -S "$salt" -s \
+  | cut -c$((5 + ${#salt}))- \
+  | cut -c${hash_start}-${hash_end}
+)
+echo "pass id: $pass_id"
+printf "%s%s" "$pass_hash" "$hit_all_reqs" | xclip
+sleep 10
