@@ -1,73 +1,58 @@
 #!/bin/bash
 
-CHANNEL='Master Playback Volume'
-TOGGLE='Master Playback Switch'
-AMIXER=/usr/bin/amixer
-OSD=/home/cpbills/bin/osd-text.sh
-STEP=5
-USE_OSD=1
-VERBOSE=0
-DO_MPD=0
-OUTPUT=
+channel='Master Playback Volume'
+amixer=/usr/bin/amixer
 
-STATUS=`$AMIXER cget name="$CHANNEL" | tail -n2`
-OLD_VOLUME=`echo "$STATUS" | tail -n1 | cut -d, -f2`
+osd=1
+osd_cat=/usr/bin/osd_cat
+osd_font='-adobe-courier-bold-r-normal--*-180-*-*-*-*-*-*'
+osd_delay=2
+osd_options="-p bottom -A center -o 50 -O 1 -c white -b slider"
+osd_options="$osd_options -f $osd_font -d $osd_delay"
+
+vol_min=0
+vol_max=255
+vol_step=10
+vol_old=$($amixer get PCM |
+          grep Right: |
+          sed -re 's/^.*Playback\s+([0-9]+).*$/\1/')
+vol_new=$vol_old
+
+muted=0
+message=''
 
 case $1 in
-    'mute')
-        $AMIXER -q set Master toggle
-        IS_IT_ON=`$AMIXER cget name="$TOGGLE" | tail -n1 | cut -d= -f2`
-        if [ "$IS_IT_ON" = 'on' ]; then
-            OUTPUT="UN MUTE"
-            if [ $DO_MPD -gt 0 ]; then
-                mpc -q play
-            fi
-        else
-            OUTPUT="MUTE"
-            if [ $DO_MPD -gt 0 ]; then
-                mpc -q pause
-            fi
-        fi
-        ;;
-    '+')
-        $AMIXER -q set Master ${STEP}%+
-        ;;
-    '-')
-        $AMIXER -q set Master ${STEP}%-
-        ;;
-    *)
-        # remove anything from the end of the variable
-        # that isn't a number e.g. '%'
-        VOL=${1%[^0-9]*}
-        $AMIXER -q set Master ${VOL}%
-        ;;
+  mute)
+    if $amixer set Master toggle | grep -q '\[off\]'; then
+      # Volume has been muted
+      muted=1
+      message="Volume Muted"
+    fi
+    ;;
+  +)
+    vol_new=$(($vol_old + $vol_step))
+    if [[ $vol_new -gt $vol_max ]]; then
+      vol_new=$vol_max
+    fi
+    ;;
+  -)
+    vol_new=$(($vol_old - $vol_step))
+    if [[ $vol_new -lt $vol_min ]]; then
+      vol_new=$vol_min
+    fi
+    ;;
 esac
 
-STATUS=`$AMIXER cget name="$CHANNEL" | tail -n2`
-VOLUME=`echo "$STATUS" | tail -n1 | cut -d, -f2`
-
-MIN=`echo "$STATUS" | head -n1 | cut -d, -f4 | tr -c -d '[0-9]'`
-MAX=`echo "$STATUS" | head -n1 | cut -d, -f5 | tr -c -d '[0-9]'`
-
-if [[ $OLD_VOLUME -eq $VOLUME ]] && [[ $1 != 'mute' ]]; then
-    # prevent us from jamming the volume keys and clogging up the OSD/etc
-    if [ $VERBOSE -gt 0 ]; then
-        echo "no volume change, goodbye..."
-    fi
-    exit
+vol_pct=$((($vol_new*100)/$vol_max))
+if [[ "$muted" -eq 0 ]]; then
+  message="Volume: $vol_pct"
 fi
 
-PERCENT=`echo "(($VOLUME-$MIN)*100)/($MAX-$MIN)" | bc -l`
-PERCENT=`printf "%02.0f\n" "$PERCENT"`
-
-if [ $USE_OSD -gt 0 ]; then
-    if [[ $1 == 'mute' ]]; then
-        $OSD -t "$OUTPUT"
-    else
-        $OSD -t "Volume: ${PERCENT}%" -b -m $MAX -v $VOLUME
-    fi
+if [[ $vol_new -ne $vol_old ]]; then
+  $amixer -q set PCM $vol_new
 fi
 
-if [ $VERBOSE -gt 0 ]; then
-    echo $OUTPUT
+if [[ $osd -eq 1 && ! -z "$XAUTHORITY" ]]; then
+  pkill osd_cat
+  $osd_cat $osd_options -T "$message" -P $vol_pct &
 fi
