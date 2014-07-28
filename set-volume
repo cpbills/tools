@@ -1,23 +1,18 @@
 #!/bin/bash
 
-channel='Master Playback Volume'
 amixer=/usr/bin/amixer
+osd_cat=/usr/bin/osd_cat
 
 osd=1
-osd_cat=/usr/bin/osd_cat
 osd_font='-adobe-courier-bold-r-normal--*-180-*-*-*-*-*-*'
 osd_delay=2
 osd_options="-p bottom -A center -o 50 -O 1 -c white -b slider"
 osd_options="$osd_options -f $osd_font -d $osd_delay"
 
-vol_min=0
-vol_max=255
-vol_step=10
-vol_old=$($amixer get PCM |
-          grep Right: |
-          sed -re 's/^.*Playback\s+([0-9]+).*$/\1/')
-vol_new=$vol_old
-
+volume_step=5
+volume=$($amixer get PCM | awk -F"[][]" '/Right:/ {print $2}')
+volume=${volume%\%}
+volume_new=$volume
 muted=0
 message=''
 
@@ -26,33 +21,35 @@ case $1 in
     if $amixer set Master toggle | grep -q '\[off\]'; then
       # Volume has been muted
       muted=1
-      message="Volume Muted"
+    else
+      volume_new=$volume
+      volume=0
     fi
     ;;
   +)
-    vol_new=$(($vol_old + $vol_step))
-    if [[ $vol_new -gt $vol_max ]]; then
-      vol_new=$vol_max
+    volume_new=$((volume + volume_step))
+    if [[ $volume_new -gt 100 ]]; then
+      volume_new=100
     fi
     ;;
   -)
-    vol_new=$(($vol_old - $vol_step))
-    if [[ $vol_new -lt $vol_min ]]; then
-      vol_new=$vol_min
+    volume_new=$((volume - volume_step))
+    if [[ $volume_new -lt 0 ]]; then
+      volume_new=0
     fi
     ;;
 esac
 
-vol_pct=$((($vol_new*100)/$vol_max))
-if [[ "$muted" -eq 0 ]]; then
-  message="Volume: $vol_pct"
+if [[ "$muted" -eq 1 ]]; then
+  message="Volume Muted"
 fi
 
-if [[ $vol_new -ne $vol_old ]]; then
-  $amixer -q set PCM $vol_new
+if [[ "$volume" -ne "$volume_new" ]]; then
+  $amixer -q set PCM "${volume_new}%"
+  message="Volume: ${volume_new}%"
 fi
 
-if [[ $osd -eq 1 && ! -z "$XAUTHORITY" ]]; then
-  pkill osd_cat
-  $osd_cat $osd_options -T "$message" -P $vol_pct &
+if [[ "$osd" -eq 1 && -n "$XAUTHORITY" && -n "$message" ]]; then
+  pkill osd_cat &>/dev/null
+  $osd_cat $osd_options -T "$message" -P $volume_new &
 fi
