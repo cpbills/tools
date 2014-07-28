@@ -8,14 +8,14 @@ hit_all_reqs=''
 length=''
 hash_start=''
 
-if [[ -z "$config" || ! -e "$config" ]]; then
+if [[ -z "$config" || ! -f "$config" ]]; then
   # Fallback configuration file, if none provided or
   # the provided config file does not exist.
   config="$HOME/.config/pass-maker.conf"
 fi
 
 
-if [[ -e "$config" ]]; then
+if [[ -f "$config" ]]; then
   source "$config"
 else
   echo "Missing configuration: $config" >&2
