@@ -1,52 +1,80 @@
 #!/bin/bash
 
-if [ "$1z" == "z" ] || [ "$2z" == "z" ]; then
-    echo "Please provide a source and destination" 1>&2
-    exit 1
-elif [ ! -e "$1" ] || [ ! -e "$2" ]; then
-    echo "Please provide files / directories that exist" 1>&2
-    exit 2
-fi
-
-# This script will copy a file from one repository to another, preserving
+# This script copies a file from one git repository to another, preserving
 # commit history.
-PATCH="/tmp/git-history.$$"
 
-# Get absolute path for the file/dir and destination
-FILE=`readlink -f $1`
-DEST=`readlink -f $2`
+git=/usr/bin/git
+src="$1"
+dst="$2"
 
-REPO=`dirname $FILE`
-SRC=`basename $FILE`
+usage() {
+  message="$1"
+  usage="Usage: ${0##*/} <source_file> <dest_directory>"
+  printf "%s\n\n%s\n" "$usage" "$message" >&2
+}
 
-# Change to the repository directory (so git commands will work)
-pushd $REPO
-
-# Dump a patch file that contains all the history of the file
-# or directory we are interested in.
-git log --pretty=email --patch-with-stat --reverse -- $SRC > $PATCH
-
-# Check for error, display warning and exit on failure
-if [ $? -ne 0 ]; then
-    echo "Failed to create email patch for $FILE" >&2
-    exit 1
+if [[ -z "$src" || -z "$dst" ]]; then
+  usage "Please provide a source and destination"
+  exit 1
 fi
 
-# Leave first git repository then move to the destination
-popd
-pushd $DEST
-
-# Use git-am (apply from email) to apply the patch to the new repository
-git am < $PATCH
-
-patch_rv=$?
-popd
-if [ $patch_rv -ne 0 ]; then
-    echo "Failed to apply email patch to $DEST" >&2
-    echo >&2
-    echo "Attempted patch not deleted: $PATCH" >&2
+if [[ -e "$src" ]]; then
+  if [[ ! -r "$src" ]]; then
+    usage "Can not read file: $src"
     exit 2
+  fi
+  if [[ ! -f "$src" ]]; then
+    usage "Source is not a file: $src"
+    exit 4
+  fi
+  if ! (cd "${src%/*}" && $git status &>/dev/null); then
+    usage "Source file is not tracked in a repository: $src"
+    exit 5
+  fi
 else
-    # Clean up
-    rm $PATCH
+  usage "File does not exist: $src"
+  exit 3
 fi
+
+if [[ -e "$dst" ]]; then
+  if [[ ! -r "$dst" ]]; then
+    usage "Can not read file: $dst"
+    exit 2
+  fi
+  if [[ ! -d "$dst" ]]; then
+    usage "Destination is not a directory: $dst"
+    exit 4
+  fi
+  if ! (cd "$dst" && $git status &>/dev/null); then
+    usage "Destination is not a git repository: $src"
+    exit 5
+  fi
+else
+  usage "File does not exist: $dst"
+  exit 3
+fi
+
+# Get proper absolute path to files
+src=$(readlink -f "$src")
+dst=$(readlink -f "$dst")
+
+# Change to source file's directory to avoid all sorts of git flags
+cd "${src%/*}"
+# Dump a patch file that contains all the history of the file.
+patch="/tmp/${src##*/}-patch.$$"
+$git log --pretty=email --patch-with-stat --reverse -- "$src" > "$patch"
+if [[ $? -ne 0 ]]; then
+  echo "Patch creation failed for $src ($patch)" >&2
+  # Cleanup may be a good idea, but perhaps something needs to be diagnosed.
+  #rm "$patch"
+  exit 6
+fi
+
+cd "$dst"
+$git am < "$patch"
+if [[ $? -ne 0 ]]; then
+  echo "Patch application failed for $src ($patch)" >&2
+  exit 7
+fi
+
+rm "$patch"
