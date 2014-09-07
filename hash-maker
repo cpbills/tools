@@ -1,0 +1,8 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+my $salt = $ARGV[0];
+my $phrase=<STDIN>;
+print crypt("$phrase","\$5\$$salt\$");
