@@ -5,7 +5,10 @@ if grep -q closed /proc/acpi/button/lid/*/state; then
       export DISPLAY=":${session##*/X}"
       pgrep -x xinit | while read xinitpid; do
         xuser=$(ps -o user,cmd $xinitpid | grep "$DISPLAY" | awk '{print $1}')
-        su $xuser -c "/usr/bin/xscreensaver-command -lock"
+        state=$(su $xuser -c "/usr/bin/xscreensaver-command -time")
+        if ! echo "$state" | grep -q "screen locked"; then
+          su $xuser -c "/usr/bin/xscreensaver-command -lock"
+        fi
       done
     done
   fi
