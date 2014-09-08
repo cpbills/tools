@@ -1,0 +1,12 @@
+#!/bin/bash
+if grep -q closed /proc/acpi/button/lid/*/state; then
+  if pidof xscreensaver >/dev/null; then
+    find /tmp/.X11-unix -iname 'X?' | while read session; do
+      export DISPLAY=":${session##*/X}"
+      pgrep -x xinit | while read xinitpid; do
+        xuser=$(ps -o user,cmd $xinitpid | grep "$DISPLAY" | awk '{print $1}')
+        su $xuser -c "/usr/bin/xscreensaver-command -lock"
+      done
+    done
+  fi
+fi
