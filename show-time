@@ -1,0 +1,8 @@
+#!/bin/bash
+
+osd_font='-*-terminus-medium-r-*-*-72-*-*-*-*-*-*-*'
+osd_delay=5
+osd_options="-o 20 -p top -A center -c white -u black -O 4"
+osd_options="$osd_options -f $osd_font -d $osd_delay"
+
+date | osd_cat $osd_options
