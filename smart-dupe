@@ -19,8 +19,6 @@ sub main {
     my $delimeter = chr(1);
     # which directory are we going to find dupes in? cwd if none provided
     my $dir       = $ARGV[0] || '.';
-    # a counter for the number of duplicates found
-    my $dupecount = 0;
     # a hash containing delimited lists of files of the same file size
     # this should improve the lookup of same size files dramatically
     # key is filesize
@@ -31,44 +29,78 @@ sub main {
     # directory to move duplicates to, for saving, or confirming duplicity
     my $dupedir   = "$dir/.dupes";
 
-    opendir DIR, $dir or die "could not open \'$dir\': $!\n";
-    foreach my $file (grep { !/^\.\.?$/ } readdir DIR) {
+    my $dupecount = scan_dir($dir,\%hashhash,\%sizehash,$dupedir);
+  printf "%s duplicate files found\n", $dupecount;
+}
+
+sub scan_dir {
+  my $dir       = shift;
+  my $hashhash  = shift;
+  my $sizehash  = shift;
+  my $dupedir   = shift;
+
+  my $dupes     = 0;
+
+  if (opendir my $dir_fh, $dir) {
+    foreach my $file (grep { !/^\..*$/ } readdir $dir_fh) {
+      printf "$file\n";
+      my $full = "$dir/$file";
+      if (-d $full) {
+        $dupes += scan_dir($full,$hashhash,$sizehash,$dupedir);
+        next;
+      }
+      if (-f $full) {
         my $dupe = 0;
-        next unless (-f "$dir/$file");
-        my $size = (stat("$dir/$file"))[7];
+        my $size = (stat($full))[7];
         next if ($size > $MAXSIZE);
-        my @sizearray = ();
-        @sizearray = split(/$delimeter/,$sizehash{$size}) if ($sizehash{$size});
-        foreach my $samesizefile (@sizearray) {
-            $hashhash{$file} = sumfile("$dir/$file")
-                unless ($hashhash{$file});
-            $hashhash{$samesizefile} = sumfile("$dir/$samesizefile")
-                unless ($hashhash{$samesizefile});
-            if ($hashhash{$file} eq $hashhash{$samesizefile}) {
-                $dupecount++;
-                mkdir $dupedir unless (-d $dupedir);
-                rename "$dir/$file","$dupedir/$file:$samesizefile" or
-                    die "failed to remove dupe ($file,$samesizefile): $!\n";
-                print "$file duplicate of $samesizefile\n";
-                $dupe = 1;
-                last;
+        my @sizematches = ();
+           @sizematches = @{$$sizehash{$size}} if ($$sizehash{$size});
+        foreach my $sizematch (@sizematches) {
+          $$hashhash{$full} = sumfile($full) unless ($$hashhash{$full});
+          $$hashhash{$sizematch} = sumfile($sizematch)
+            unless $$hashhash{$sizematch};
+          if ($$hashhash{$full} eq $$hashhash{$sizematch}) {
+            $dupes++;
+            mkdir $dupedir unless (-d $dupedir);
+            if (rename $full,"$dupedir/$file") {
+              printf "%s duplicates\n  %s\n", $full, $sizematch;
+            } else {
+              printf STDERR "failed to move duplicate %s\n", $full;
             }
+            $dupe = 1;
+            last;
+          }
+          # Only non-dupes or non-moved files should make it this far
         }
-        push(@sizearray,$file) unless ($dupe);
-        $sizehash{$size} = join($delimeter,@sizearray);
+        push @sizematches, $full;
+        $$sizehash{$size} = \@sizematches;
+      }
     }
-    closedir DIR;
-    print "$dupecount duplicate files found\n";
+    closedir $dir_fh;
+  } else {
+    printf STDERR "Failed to open %s: %s\n", $dir, $!;
+    exit 1;
+  }
+  return $dupes;
 }
 
 
 sub sumfile {
-    my $file = shift;
+    my $file  = shift;
 
-    open FILE,$file or die "could not open \'$file\': $!\n";
-    binmode FILE or die "binmod \'$file\' failed: $!\n";
-    my $md5 = md5_hex(<FILE>);
-    close FILE;
+    my $md5   = '';
 
+    if (open my $fh,'<',$file) {
+      if (binmode $fh) {
+        $md5 = md5_hex(<$fh>);
+      } else {
+        printf STDERR "Unable to binmode %s: %s\n", $file, $!;
+        exit 2;
+      }
+      close $fh;
+    } else {
+      printf STDERR "Unable to open %s for reading: %s\n", $file, $!;
+      exit 3;
+    }
     return $md5;
 }
