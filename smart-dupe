@@ -4,76 +4,76 @@ use strict;
 use warnings;
 
 use Digest::MD5 qw(md5_hex);
+use Getopt::Long;
 
 
 # we don't want to create hashes for files larger than this.
 # it takes a long time to generate MD5 sums of large files,
 # so unless you need to check for duplicates on large files,
 # 5M is a pretty good maximum.
-my $MAXSIZE = 1024 * 1024 * 5;
+my $max_size  = 1024 * 1024 * 5;
 
-main();
+my $recurse   = 0;
+my $dupe_dir  = '';
+my $dry_run   = 0;
 
-sub main {
-    # use a unique delimeter for the size hash
-    my $delimeter = chr(1);
-    # which directory are we going to find dupes in? cwd if none provided
-    my $dir       = $ARGV[0] || '.';
-    # a hash containing delimited lists of files of the same file size
-    # this should improve the lookup of same size files dramatically
-    # key is filesize
-    my %sizehash  = ();
-    # hash of md5 hashes... get it, a hash of hashes...
-    # key is filename
-    my %hashhash  = ();
-    # directory to move duplicates to, for saving, or confirming duplicity
-    my $dupedir   = "$dir/.dupes";
+GetOptions(
+  'r'       => \$recurse,
+  'dupes'   => \$dupe_dir,
+  'n'       => \$dry_run,
+  'dryrun'  => \$dry_run,
+);
 
-    my $dupecount = scan_dir($dir,\%hashhash,\%sizehash,$dupedir);
-  printf "%s duplicate files found\n", $dupecount;
-}
+my $start_dir = $ARGV[0] || '.';
+
+# Hash of array references of filenames keyed on filesize
+my %sizes   = ();
+# Hash of file content hashes; duplicate hash = duplicate file (in theory)
+my %hashes  = ();
+
+my $dupes = scan_dir($start_dir);
+printf "%s duplicate files found\n", $dupes;
+exit;
 
 sub scan_dir {
-  my $dir       = shift;
-  my $hashhash  = shift;
-  my $sizehash  = shift;
-  my $dupedir   = shift;
+  my $dir = shift;
+  printf "checking $dir\n";
 
-  my $dupes     = 0;
+  my $dupes = 0;
+  my @sub_dirs = ();
 
   if (opendir my $dir_fh, $dir) {
     foreach my $file (grep { !/^\..*$/ } readdir $dir_fh) {
-      printf "$file\n";
       my $full = "$dir/$file";
       if (-d $full) {
-        $dupes += scan_dir($full,$hashhash,$sizehash,$dupedir);
+        push @sub_dirs, $full;
         next;
       }
       if (-f $full) {
         my $dupe = 0;
         my $size = (stat($full))[7];
-        next if ($size > $MAXSIZE);
-        my @sizematches = ();
-           @sizematches = @{$$sizehash{$size}} if ($$sizehash{$size});
-        foreach my $sizematch (@sizematches) {
-          $$hashhash{$full} = sumfile($full) unless ($$hashhash{$full});
-          $$hashhash{$sizematch} = sumfile($sizematch)
-            unless $$hashhash{$sizematch};
-          if ($$hashhash{$full} eq $$hashhash{$sizematch}) {
+        next if ($size > $max_size);
+        my @size_matches = ();
+           @size_matches = @{$sizes{$size}} if ($sizes{$size});
+        foreach my $size_match (@size_matches) {
+          $hashes{$full} = sumfile($full) unless ($hashes{$full});
+          $hashes{$size_match} =
+            sumfile($size_match) unless $hashes{$size_match};
+          if ($hashes{$full} eq $hashes{$size_match}) {
             $dupes++;
-            mkdir $dupedir unless (-d $dupedir);
-            if (rename $full,"$dupedir/$file") {
-              printf "%s duplicates\n  %s\n", $full, $sizematch;
-            } else {
-              printf STDERR "failed to move duplicate %s\n", $full;
-            }
             $dupe = 1;
+            printf "%s duplicates\n  %s\n", $full, $size_match;
+            if ($dry_run == 0) {
+              mkdir $dupe_dir unless (-d $dupe_dir);
+              if (!rename $full,"$dupe_dir/$file") {
+                printf STDERR "failed to move %s: %s\n", $full, $!;
+              }
+            }
             last;
           }
-          # Only non-dupes or non-moved files should make it this far
         }
-        push @sizematches, $full;
-        $$sizehash{$size} = \@sizematches;
+        push @size_matches, $full;
+        $sizes{$size} = \@size_matches;
       }
     }
     closedir $dir_fh;
@@ -81,6 +81,13 @@ sub scan_dir {
     printf STDERR "Failed to open %s: %s\n", $dir, $!;
     exit 1;
   }
+
+  if ($recurse != 0) {
+    foreach my $sub_dir (@sub_dirs) {
+      $dupes += scan_dir($sub_dir);
+    }
+  }
+
   return $dupes;
 }
 
