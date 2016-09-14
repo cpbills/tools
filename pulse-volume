@@ -1,0 +1,68 @@
+#!/bin/bash
+
+osd_cat=/usr/bin/osd_cat
+# Tried using PCM before, but need to do more work to get that to work.
+
+osd=1
+osd_font='-adobe-courier-bold-r-normal--*-180-*-*-*-*-*-*'
+osd_delay=2
+osd_options="-p bottom -A center -o 50 -O 1 -c white -b slider"
+osd_options="$osd_options -f $osd_font -d $osd_delay"
+
+volume_step=5
+volume=$(pactl list sink-inputs | grep -o -E '[0-9]+%' | sort | tail -n1)
+volume=${volume%\%}
+volume_new=$volume
+volume_max=120
+muted=0
+message=''
+
+all_inputs() {
+  cmd=$1
+  setting=$2
+
+  sinks=$(pactl list sink-inputs | grep -oE '#[0-9]+' | sed -e 's/^#//')
+  while read input; do
+    pactl $cmd $input $setting
+  done <<< "$sinks"
+}
+
+case $1 in
+  mute)
+    if pactl list sink-inputs | grep -q 'Mute: yes'; then
+      all_inputs "set-sink-input-mute" "0"
+      volume_new=$volume
+      volume=0
+    else
+      all_inputs "set-sink-input-mute" "1"
+      muted=1
+    fi
+    ;;
+  +)
+    volume_new=$((volume + volume_step))
+    if [[ $volume_new -gt $volume_max ]]; then
+      volume_new=$volume_max
+    fi
+    ;;
+  -)
+    volume_new=$((volume - volume_step))
+    if [[ $volume_new -lt 0 ]]; then
+      volume_new=0
+    fi
+    ;;
+esac
+
+if [[ "$muted" -eq 1 ]]; then
+  message="Volume Muted"
+fi
+
+if [[ "$volume" -ne "$volume_new" ]]; then
+  all_inputs "set-sink-input-volume" "${volume_new}%"
+  message="Volume: ${volume_new}%"
+fi
+
+if [[ "$osd" -eq 1 && -n "$XAUTHORITY" && -n "$message" ]]; then
+  pkill osd_cat &>/dev/null
+  percent=$((volume_new * 100 / volume_max))
+  $osd_cat $osd_options -T "$message" -P $percent &
+fi
