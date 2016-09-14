@@ -2,6 +2,8 @@
 
 amixer=/usr/bin/amixer
 osd_cat=/usr/bin/osd_cat
+# Tried using PCM before, but need to do more work to get that to work.
+mixer='Master'
 
 osd=1
 osd_font='-adobe-courier-bold-r-normal--*-180-*-*-*-*-*-*'
@@ -10,7 +12,7 @@ osd_options="-p bottom -A center -o 50 -O 1 -c white -b slider"
 osd_options="$osd_options -f $osd_font -d $osd_delay"
 
 volume_step=5
-volume=$($amixer get PCM | awk -F"[][]" '/Right:/ {print $2}')
+volume=$($amixer sget $mixer | tail -n1 | awk -F'[][]' '{print $2}')
 volume=${volume%\%}
 volume_new=$volume
 muted=0
@@ -18,7 +20,7 @@ message=''
 
 case $1 in
   mute)
-    if $amixer set Master toggle | grep -q '\[off\]'; then
+    if $amixer sset Master toggle | grep -q '\[off\]'; then
       # Volume has been muted
       muted=1
     else
@@ -45,7 +47,7 @@ if [[ "$muted" -eq 1 ]]; then
 fi
 
 if [[ "$volume" -ne "$volume_new" ]]; then
-  $amixer -q set PCM "${volume_new}%"
+  $amixer -q sset $mixer "${volume_new}%"
   message="Volume: ${volume_new}%"
 fi
 
